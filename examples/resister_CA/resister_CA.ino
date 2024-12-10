@@ -176,5 +176,5 @@ wqKdNe51+h9piLpoBsFm37GraPev/mYQ4fAaR9S64PMG
     Serial.println("Certificate registration failed.");
   }
 
-  while true;
+  while (true);
 }
