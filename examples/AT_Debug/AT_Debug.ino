@@ -60,38 +60,35 @@ void setup() {
     MODEM_TX_PIN,
     MODEM_RTS_PIN,
     MODEM_CTS_PIN,
-    USE_HARDWARE_FLOW_CONTROL);  
-  modem->setAsyncResponsePrefixes({"+UFOTASTAT:", "+ULWM2MSTAT:", "+UUPSDA:", "+UUSIMSTAT:"});
+    USE_HARDWARE_FLOW_CONTROL);
+  modem->setAsyncResponsePrefixes({"+UFOTASTAT:", "+ULWM2MSTAT:", "+UUPSDA:", "+UUSIMSTAT:", "+UUHTTPCR:"});
   modem->setResponseEndCriteria({"OK", "ERROR", "+CME ERROR:*", "+CMS ERROR:*"});
   modem->setAsyncCallback(onAsyncResponse);
   modem->begin();
 
-  // Confirmation of the modem
-  modem->sendATCommand("AT");
   std::vector<String> responses;
-  if (modem->getResponses(&responses, 5000)) {
+  if (modem->sendATCommandWithResponse("AT", &responses, 5000)) {
       Serial.println("You can send AT commands now...");
   } else {
       Serial.println("Failed to open modem.");
   }
 }
 
-  /**
-   * @brief Main loop of the program.
-   * 
-   * This function is an infinite loop that waits for user input from the serial
-   * console. The user can send AT commands to the modem and receive responses.
-   * The response is printed to the serial console.
-   * 
-   * The loop continues indefinitely until the program is stopped.
-   */
+/**
+ * @brief The main loop of the program.
+ * 
+ * In this loop, the program will wait for user input from the serial console.
+ * The user can enter any valid AT command to send to the modem. The program
+ * will then send the command to the modem and wait for the response. The
+ * response from the modem is stored in a vector and then printed to the
+ * serial console.
+ */
 void loop() {
   std::vector<String> responses;
   String command = Serial.readStringUntil('\n');
   command.trim();
   if (command != "") {
-    modem->sendATCommand(command);
-    if (modem->getResponses(&responses, 5000)) {
+    if (modem->sendATCommandWithResponse(command, &responses, 5000)) {
         for (const auto& response : responses) {
             Serial.println(response);
         }

@@ -24,6 +24,8 @@ public:
     bool getResponses(std::vector<String>* responses, int timeoutMs = 5000);
     void setResponseEndCriteria(const std::vector<String>& criteria);
 
+    bool sendATCommandWithResponse(const String& command, std::vector<String>* responses, int timeoutMs = 5000);
+
     void setAsyncResponsePrefixes(const std::vector<String>& prefixes);
     void setAsyncCallback(AsyncCallback callback);
 

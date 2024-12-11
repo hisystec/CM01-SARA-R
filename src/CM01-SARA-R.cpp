@@ -311,17 +311,54 @@ void ModemHandler::processLine(const String& line) {
 }
 
 /**
- * @brief Sets the criteria for response end detection.
+ * @brief Sends an AT command to the modem and waits for responses.
  *
- * This function sets the criteria for detecting the end of a response from
- * the modem. The criteria are strings that must be matched at the beginning
- * of a line. The wild card character (*) can be used to match any characters
- * after the specified prefix. If the wild card character is used, the line
- * is considered a response end if the prefix matches the beginning of the
- * line. Otherwise, the line must match the criteria exactly.
+ * This function sends an AT command to the modem and waits for responses.
+ * The function will wait for the specified timeout period before returning.
+ * If a response is received within the timeout period, the function will
+ * store the response in the provided vector and return true. If the function
+ * times out or no response is received, the function will return false.
  *
- * @param criteria A vector of strings to use as criteria for response end
- * detection.
+ * @param command The AT command to send to the modem.
+ * @param responses The vector to store the responses in.
+ * @param timeoutMs The timeout period in milliseconds.
+ * @return true if a response is received within the timeout period, false
+ *    otherwise.
+ */
+bool ModemHandler::sendATCommandWithResponse(const String& command, std::vector<String>* responses, int timeoutMs) {
+    if (!responses) return false;
+
+    sendATCommand(command);
+
+    responses->clear();
+    unsigned long startTime = millis();
+    String response;
+
+    while (millis() - startTime < timeoutMs) {
+        if (getResponse(response, timeoutMs)) {
+            responses->push_back(response);
+
+            if (isEndOfResponse(response)) {
+                return true;
+            }
+        } else {
+            break;
+        }
+    }
+    return !responses->empty();
+}
+
+
+/**
+ * @brief Sets the criteria for determining the end of a response.
+ *
+ * This function sets the criteria for determining the end of a response from
+ * the modem. The criteria is a vector of strings that may contain a wildcard
+ * character '*'. If the wildcard character is present, the line must start
+ * with the string before the wildcard. If no wildcard character is present,
+ * the line must match the string exactly.
+ *
+ * @param criteria The vector of strings to set as the response end criteria.
  */
 void ModemHandler::setResponseEndCriteria(const std::vector<String>& criteria) {
     responseEndCriteria = criteria;

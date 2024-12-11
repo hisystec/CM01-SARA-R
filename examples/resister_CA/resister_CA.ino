@@ -21,123 +21,115 @@ ModemHandler* modem;
 const int BAUD_RATE = 115200;           // baud rate
 
 /**
- * @brief Registers a CA Certificate in the modem's Trust Store.
- * 
- * This function sends the AT+USECMNG command to the modem to register a CA
- * Certificate in the modem's Trust Store. The function will send the PEM data
- * line by line to the modem and wait for the response. If the certificate is
- * registered successfully, the function returns true. Otherwise, the function
- * returns false and prints an error message to the serial monitor.
- * 
- * @param certName The name of the CA Certificate to register.
- * @param pemData The PEM data of the CA Certificate to register.
- * @param delayMs The delay in milliseconds between each line of PEM data.
- * @return true if the CA Certificate is registered successfully, false otherwise.
+ * @brief Registers a CA certificate to the modem.
+ *
+ * This function sends an AT command to the modem to register a CA certificate
+ * with the specified name and PEM data. It sends the PEM data line by line
+ * and waits for a response to confirm successful registration.
+ *
+ * @param certName The name of the certificate to be registered.
+ * @param pemData The PEM formatted certificate data.
+ * @param delayMs The delay in milliseconds between sending each line of PEM data.
+ * @return true if the certificate is registered successfully, false otherwise.
  */
 bool registerCaCertificate(const String &certName, const String &pemData, unsigned int delayMs = 0) {
-    const char prompt = '>';
-    String command = "AT+USECMNG=0,0,\"" + certName + "\"," + String(pemData.length());
-    std::vector<String> responses;
+  const char prompt = '>';
+  String command = "AT+USECMNG=0,0,\"" + certName + "\"," + String(pemData.length());
+  std::vector<String> responses;
 
-    modem->sendATCommand(command);
-    modem->setEnablePrompt(prompt);
-    
-    // `>` Confirmation of prompt
-    if (modem->getResponses(&responses, 5000)) {
-        if (responses.back().indexOf(prompt) == -1) {
-        Serial.println("Error: Expected '>' prompt not received.");
-        return false;
-        }
+  modem->setEnablePrompt(prompt);  
+  if (modem->sendATCommandWithResponse(command, &responses, 5000)) {
+    if (responses.back().indexOf(prompt) == -1) {
+      Serial.println("Error: Expected '>' prompt not received.");
+      return false;
+    }
+  } else {
+    Serial.println("Error: Expected modem is not responding.");
+  }
+  modem->setDisablePrompt();
+
+  Serial.println("Sending PEM data line by line...");
+
+  int startIdx = 0;
+  while (startIdx < pemData.length()) {
+    int endIdx = pemData.indexOf('\n', startIdx);
+    if (endIdx == -1) {
+      endIdx = pemData.length();
+    }
+    String line = pemData.substring(startIdx, endIdx + 1);
+    modem->sendStringData(line);
+    Serial.print("Sent: ");
+    Serial.print(line);
+
+    delay(delayMs);
+
+    startIdx = endIdx + 1;
+  }
+
+  Serial.println("PEM data sent. Awaiting response...");
+
+  if (modem->getResponses(&responses, 5000)) {
+    if (responses.back().indexOf("OK") != -1) {
+     for (const auto& response : responses) {
+          Serial.println(response);
+      }
+      return true;
     } else {
-        Serial.println("Error: Expected modem is not responding.");
+      return false;    
     }
-    modem->setDisablePrompt();
-
-    Serial.println("Sending PEM data line by line...");
-
-    // Split by LF and send PEM data
-    int startIdx = 0;
-    while (startIdx < pemData.length()) {
-        int endIdx = pemData.indexOf('\n', startIdx);
-        if (endIdx == -1) {
-        endIdx = pemData.length(); // Last line
-        }
-        String line = pemData.substring(startIdx, endIdx + 1); // Including LF
-        modem->sendStringData(line); // send string data to modem
-        Serial.print("Sent: ");
-        Serial.print(line);
-
-        delay(delayMs); // millisecond wait
-
-        startIdx = endIdx + 1;
-    }
-
-    Serial.println("PEM data sent. Awaiting response...");
-
-    if (modem->getResponses(&responses, 5000)) {
-        if (responses.back().indexOf("OK") != -1) {
-        for (const auto& response : responses) {
-            Serial.println(response);
-        }
-        return true;
-        } else {
-        return false;    
-        }
-    } else {
-        return false;
-    }
+  } else {
+    return false;
+  }
 }
 
-
 /**
- * @brief Sets up the serial communication and initializes the modem.
+ * @brief Setup function
  * 
- * This function configures the serial monitor for communication and initializes
- * the modem by setting the necessary pins, asynchronous response prefixes, and
- * response end criteria. It also registers a callback function for handling
- * asynchronous responses and starts the modem. Finally, it sends an AT command
- * to confirm the modem connection status.
+ * Initializes the serial monitor and the modem. The modem is configured
+ * with the specified pins and settings. The function sends an AT command
+ * to the modem to verify that it is responding.
  */
 void setup() {
-    // Initializing serial monitor
-    Serial.begin(115200);
-    delay(1000);
+  // Initializing serial monitor
+  Serial.begin(115200);
+  delay(1000);
 
-    // Initializing modem
-    Serial.println("Initializing modem...");
-    modem = new ModemHandler(Serial2);
-    modem->setPins(
-        MODEM_POWER,
-        MODEM_PWR_ON,
-        MODEM_RX_PIN,
-        MODEM_TX_PIN,
-        MODEM_RTS_PIN,
-        MODEM_CTS_PIN,
-        USE_HARDWARE_FLOW_CONTROL);
-    modem->setAsyncResponsePrefixes({"+UFOTASTAT:", "+ULWM2MSTAT:", "+UUPSDA:", "+UUSIMSTAT:"});
-    modem->setResponseEndCriteria({"OK", "ERROR", "+CME ERROR:*"});
-    modem->begin();
+  // Initializing modem
+  Serial.println("Initializing modem...");
+  modem = new ModemHandler(Serial2);
+  modem->setPins(
+    MODEM_POWER,
+    MODEM_PWR_ON,
+    MODEM_RX_PIN,
+    MODEM_TX_PIN,
+    MODEM_RTS_PIN,
+    MODEM_CTS_PIN,
+    USE_HARDWARE_FLOW_CONTROL);
+  modem->setAsyncResponsePrefixes({"+UFOTASTAT:", "+ULWM2MSTAT:", "+UUPSDA:", "+UUSIMSTAT:", "+UUHTTPCR:"});
+  modem->setResponseEndCriteria({"OK", "ERROR", "+CME ERROR:*", "+CMS ERROR:*"});
+  modem->begin();
 
-    // Modem initialization
-    modem->sendATCommand("AT");
-    std::vector<String> responses;
-    if (modem->getResponses(&responses, 5000)) {
-        Serial.println("Modem initialized successfully!");
-    } else {
-        Serial.println("Modem initialization failed.");
-        delay(30000L);
-        return;
-    }
+  std::vector<String> responses;
+  if (modem->sendATCommandWithResponse("AT", &responses, 5000)) {
+      Serial.println("Modem initialized successfully!");
+  } else {
+      Serial.println("Modem initialization failed.");
+      delay(30000L);
+      return;
+  }
 }
 
 /**
- * @brief CA Certificate registration example
- * 
- * This example demonstrates how to register a CA Certificate in the modem's
- * Trust Store. The CA Certificate is read from a string and sent to the modem
- * using the AT+USECMNG command. The response from the modem is printed to the
- * serial console, and the function returns true if the certificate is registered
- * successfully, false otherwise.
+ * @brief Registers a sample CA certificate to the modem.
+ *
+ * This function sends an AT command to the modem to register a CA certificate
+ * with the specified name and PEM data. It sends the PEM data line by line
+ * and waits for a response to confirm successful registration.
+ *
+ * Please note that this is a sample code and should not be used in production
+ * without proper security considerations. The certificate data is for sample
+ * purposes only and should be replaced with appropriate CA certificate in
+ * production environments.
  */
 void loop() {
   
