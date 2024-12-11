@@ -1,3 +1,5 @@
+
+// ModemHandler.h
 #ifndef MODEM_HANDLER_H
 #define MODEM_HANDLER_H
 
@@ -15,22 +17,19 @@ public:
     void begin();
     void setPins(int powerPin = 5, int pwrOnPin = 4, int rxPin = 16, int txPin = 17,
                  int rtsPin = 18, int ctsPin = 19, bool useFlowControl = true);
-
     void sendATCommand(const String& command);
     void sendStringData(const String& data);
     bool getResponse(String& response, int timeoutMs = 5000);
     bool getAsyncEvent(String& event, int timeoutMs = 5000);
-
     bool getResponses(std::vector<String>* responses, int timeoutMs = 5000);
     void setResponseEndCriteria(const std::vector<String>& criteria);
-
     bool sendATCommandWithResponse(const String& command, std::vector<String>* responses, int timeoutMs = 5000);
-
     void setAsyncResponsePrefixes(const std::vector<String>& prefixes);
     void setAsyncCallback(AsyncCallback callback);
-
     void setEnablePrompt(char chr = '>');
     void setDisablePrompt();
+    void enableDebugMode();
+    void disableDebugMode();
 
 private:
     HardwareSerial* serial;
@@ -49,16 +48,19 @@ private:
     bool enablePrompt;
     char promptCharacter;
 
+    bool debugMode;
+
     std::vector<String> asyncResponsePrefixes;
     std::vector<String> responseEndCriteria;
 
     AsyncCallback asyncCallback;
-
     void powerOnModem();
     void initSerial();
     static void readFromModemTask(void* param);
     void processLine(const String& line);
     bool isEndOfResponse(const String& line);
+    
+    void debugPrint(const String& direction, const String& data);
 };
 
 #endif // MODEM_HANDLER_H

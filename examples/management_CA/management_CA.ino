@@ -38,6 +38,7 @@ void setup() {
   // Initializing modem
   Serial.println("Initializing modem...");
   modem = new ModemHandler(Serial2);
+  modem->disableDebugMode();
   modem->setPins(
     MODEM_POWER,
     MODEM_PWR_ON,
