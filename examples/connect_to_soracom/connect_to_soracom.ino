@@ -33,10 +33,10 @@ String waitAsyncEvent(const String& asyncEvent, int timeoutMs) {
   while (modem->getAsyncEvent(asyncResponse, timeoutMs)) {
     asyncResponse.trim();
     if (asyncResponse.indexOf(asyncEvent) != -1) {
-      Serial.println("[Non-blocking Response]: " + asyncResponse);
+      Serial.println("[Match Found]: " + asyncResponse);
       return asyncResponse;
     } else {
-      Serial.println("[Flush unused Response]: " + asyncResponse);
+      Serial.println("[Skip Unrelated Response]: " + asyncResponse);
     }
   }
   return "";
