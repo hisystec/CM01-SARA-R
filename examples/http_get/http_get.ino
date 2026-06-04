@@ -1,5 +1,5 @@
 /**
- * @file connect_to_soracom.ino
+ * @file http_get.ino
  * @brief Example program for CM01-SARA-R modem.
  * 
  * @author Hideshi Matsufuji
@@ -80,7 +80,7 @@ void loop() {
   String asyncResponse;
   modem->enableDebugMode();
   modem->sendATCommandWithResponse("AT+CFUN=0", &responses, timeout);
-  modem->sendATCommandWithResponse("AT+CGDCONT=1,\""IPV4V6\",\"" + APN + "\"", &responses, timeout);
+  modem->sendATCommandWithResponse("AT+CGDCONT=1,\"IPV4V6\",\"" + APN + "\"", &responses, timeout);
   modem->sendATCommandWithResponse("AT+CFUN=1", &responses, timeout);
   modem->sendATCommandWithResponse("AT+UPSD=0,0,0", &responses, timeout);
   modem->sendATCommandWithResponse("AT+UPSD=0,1,\"" + APN + "\"", &responses, timeout);
