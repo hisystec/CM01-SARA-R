@@ -1,16 +1,47 @@
-#include <CM01-SARA-R.h>
+#include "CM01-SARA-R.h"
 
 ModemHandler::ModemHandler(HardwareSerial& serialPort, int responseQueueSize, int asyncQueueSize)
-    : serial(&serialPort), buffer(""), asyncCallback(nullptr), debugMode(false) {
+    : serial(&serialPort), buffer(""), readTaskHandle(nullptr),
+      powerPin(5), pwrOnPin(4), rxPin(16), txPin(17), rtsPin(18), ctsPin(19),
+      useFlowControl(true), enablePrompt(false), promptCharacter('>'),
+      debugMode(false), asyncCallback(nullptr) {
     responseQueue = xQueueCreate(responseQueueSize, sizeof(String*));
     asyncEventQueue = xQueueCreate(asyncQueueSize, sizeof(String*));
+}
+
+ModemHandler::~ModemHandler() {
+    if (readTaskHandle != nullptr) {
+        vTaskDelete(readTaskHandle);
+        readTaskHandle = nullptr;
+    }
+    drainQueue(responseQueue);
+    drainQueue(asyncEventQueue);
+    if (responseQueue != nullptr) {
+        vQueueDelete(responseQueue);
+        responseQueue = nullptr;
+    }
+    if (asyncEventQueue != nullptr) {
+        vQueueDelete(asyncEventQueue);
+        asyncEventQueue = nullptr;
+    }
+}
+
+void ModemHandler::drainQueue(QueueHandle_t queue) {
+    if (queue == nullptr) return;
+    String* ptr = nullptr;
+    while (xQueueReceive(queue, &ptr, 0) == pdTRUE) {
+        delete ptr;
+    }
 }
 
 void ModemHandler::begin() {
     powerOnModem();
     initSerial();
     setDisablePrompt();
-    xTaskCreatePinnedToCore(readFromModemTask, "ReadModemTask", 4096, this, 1, NULL, 1);
+    // begin()が複数回呼ばれても読み取りタスクを増殖させない
+    if (readTaskHandle == nullptr) {
+        xTaskCreatePinnedToCore(readFromModemTask, "ReadModemTask", 4096, this, 1, &readTaskHandle, 1);
+    }
     delay(6000);
 }
 
@@ -45,6 +76,7 @@ void ModemHandler::sendStringData(const String& data) {
 }
 
 bool ModemHandler::getResponse(String& response, int timeoutMs) {
+    if (responseQueue == nullptr) return false;
     String* responsePtr = nullptr;
     if (xQueueReceive(responseQueue, &responsePtr, pdMS_TO_TICKS(timeoutMs)) == pdTRUE) {
         response = *responsePtr;
@@ -55,6 +87,7 @@ bool ModemHandler::getResponse(String& response, int timeoutMs) {
 }
 
 bool ModemHandler::getAsyncEvent(String& event, int timeoutMs) {
+    if (asyncEventQueue == nullptr) return false;
     String* eventPtr = nullptr;
     if (xQueueReceive(asyncEventQueue, &eventPtr, pdMS_TO_TICKS(timeoutMs)) == pdTRUE) {
         event = *eventPtr;
@@ -134,12 +167,20 @@ void ModemHandler::processLine(const String& line) {
             if (asyncCallback) {
                 asyncCallback(line);
             }
-            xQueueSend(asyncEventQueue, &linePtr, 0);
+            // xQueueSendはタイムアウト0(非ブロッキング)のため、キューが満杯だと送信できず
+            // pdFALSEが返る。戻り値を確認せず捨てるとlinePtrがどこからも参照されなくなり、
+            // 通信エラー時等にasyncEventが溜まりやすい状況でヒープリークにつながっていた。
+            if (asyncEventQueue == nullptr || xQueueSend(asyncEventQueue, &linePtr, 0) != pdTRUE) {
+                delete linePtr;
+            }
             return;
         }
     }
 
-    xQueueSend(responseQueue, &linePtr, 0);
+    // 上記と同様、responseQueueが満杯の場合の取りこぼしでリークしないようにする。
+    if (responseQueue == nullptr || xQueueSend(responseQueue, &linePtr, 0) != pdTRUE) {
+        delete linePtr;
+    }
 }
 
 bool ModemHandler::sendATCommandWithResponse(const String& command, std::vector<String>* responses, int timeoutMs) {
@@ -151,8 +192,12 @@ bool ModemHandler::sendATCommandWithResponse(const String& command, std::vector<
     unsigned long startTime = millis();
     String response;
 
-    while (millis() - startTime < timeoutMs) {
-        if (getResponse(response, timeoutMs)) {
+    // getResponseへは常に「残り時間」を渡す。フルのtimeoutMsを毎回渡すと、
+    // 複数行応答の受信中に指定タイムアウトの数倍待ち得る。
+    while (true) {
+        unsigned long elapsed = millis() - startTime;
+        if (elapsed >= static_cast<unsigned long>(timeoutMs)) break;
+        if (getResponse(response, timeoutMs - static_cast<int>(elapsed))) {
             responses->push_back(response);
 
             if (isEndOfResponse(response)) {
@@ -175,8 +220,11 @@ bool ModemHandler::getResponses(std::vector<String>* responses, int timeoutMs) {
     String response;
     unsigned long startTime = millis();
 
-    while (millis() - startTime < timeoutMs) {
-        if (getResponse(response, timeoutMs)) {
+    // sendATCommandWithResponseと同様、残り時間を渡してトータルの待ち時間を守る
+    while (true) {
+        unsigned long elapsed = millis() - startTime;
+        if (elapsed >= static_cast<unsigned long>(timeoutMs)) break;
+        if (getResponse(response, timeoutMs - static_cast<int>(elapsed))) {
             responses->push_back(response);
             if (isEndOfResponse(response)) {
                 return true;

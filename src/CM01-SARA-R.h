@@ -13,6 +13,7 @@ public:
     using AsyncCallback = std::function<void(const String&)>;
 
     ModemHandler(HardwareSerial& serialPort, int responseQueueSize = 10, int asyncQueueSize = 10);
+    ~ModemHandler();
 
     void begin();
     void setPins(int powerPin = 5, int pwrOnPin = 4, int rxPin = 16, int txPin = 17,
@@ -36,6 +37,7 @@ private:
     String buffer;
     QueueHandle_t responseQueue;
     QueueHandle_t asyncEventQueue;
+    TaskHandle_t readTaskHandle;
 
     int powerPin;
     int pwrOnPin;
@@ -59,6 +61,7 @@ private:
     static void readFromModemTask(void* param);
     void processLine(const String& line);
     bool isEndOfResponse(const String& line);
+    static void drainQueue(QueueHandle_t queue);
     
     void debugPrint(const String& direction, const String& data);
 };
